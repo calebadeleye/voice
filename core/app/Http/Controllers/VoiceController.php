@@ -27,30 +27,44 @@ class VoiceController extends Controller
      */
     public function callback(Request $request)
     {
+        // Log the incoming request for debugging
         Log::info("Voice callback received", $request->all());
 
-        // Africa’s Talking sends these parameters in POST
-        $callerNumber = $request->input('callerNumber');
-        $sessionId    = $request->input('sessionId');
-        $isActive     = $request->input('isActive');
+        // Africa's Talking sends these parameters in POST
+        $callerNumber     = $request->input('callerNumber'); // the caller
+        $sessionId        = $request->input('sessionId');    // session ID
+        $isActive         = $request->input('isActive');     // call status
 
-        // This number is the one you want to connect the caller to
+        // The number you want the caller to be connected to
         $destinationNumber = '+12343079240'; // <-- change to your target number
-     
-        if ($isActive == 1) {
-            // Build XML response
+        $verifiedCallerId  = '+2342017001182'; // <-- must be a number verified on AT
+
+        // Make sure the call is active
+        if ($isActive === 'true' || $isActive == 1) {
+
+            // Build the XML response
             $xml = '<?xml version="1.0" encoding="UTF-8"?>';
             $xml .= '<Response>';
             $xml .= '<Say voice="woman" language="en-GB">Please hold while we connect you.</Say>';
-            $xml .= '<Dial record="true" sequential="true" phoneNumbers="' . $callerNumber . '" callerId="' . $destinationNumber . '">';
+
+            // Dial the destination number
+            $xml .= '<Dial record="true" sequential="true" ';
+            $xml .= 'phoneNumbers="' . $destinationNumber . '" ';
+            $xml .= 'callerId="' . $verifiedCallerId . '">';
             $xml .= '</Dial>';
+
             $xml .= '</Response>';
 
-            // Return XML response
+            // Return the XML response
             return response($xml, 200)
                 ->header('Content-Type', 'application/xml');
         }
+
+        // Optional: handle inactive calls or errors
+        Log::warning("Call not active or failed", $request->all());
+        return response('Call not active', 200);
     }
+
 
     /**
      * Handle AI interaction once user input is available.
