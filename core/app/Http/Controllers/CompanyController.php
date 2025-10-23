@@ -35,7 +35,7 @@ class CompanyController extends Controller
             'email' => 'nullable|email',
             'ai_name' => 'nullable|string|max:100',
             'africastalking_number' => 'nullable|string|max:20',
-            'openai_api_key' => 'nullable|string|max:255',
+            'vapi_number' => 'nullable|string|max:255',
             'assistant_description' => 'nullable|string',
             'logo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
@@ -61,7 +61,7 @@ class CompanyController extends Controller
             'email' => 'nullable|email',
             'ai_name' => 'nullable|string|max:100',
             'africastalking_number' => 'nullable|string|max:20',
-            'openai_api_key' => 'nullable|string|max:255',
+            'vapi_number' => 'nullable|string|max:255',
             'assistant_description' => 'nullable|string',
             'logo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
 

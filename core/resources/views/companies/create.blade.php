@@ -58,8 +58,8 @@
         </div>
 
         <div class="mb-3">
-            <label>OpenAI API Key</label>
-            <input type="text" name="openai_api_key" class="w-full border p-2 rounded">
+            <label>Vapi's Number</label>
+            <input type="text" name="vapi_number" class="w-full border p-2 rounded">
         </div>
 
         <div class="mb-3">

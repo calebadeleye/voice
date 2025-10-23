@@ -18,7 +18,7 @@ class Company extends Model
     'email',
     'ai_name',
     'africastalking_number',
-    'openai_api_key',
+    'vapi_number',
     'assistant_description',
 ];
 
