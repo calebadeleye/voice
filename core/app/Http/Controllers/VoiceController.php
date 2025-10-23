@@ -142,7 +142,7 @@ class VoiceController extends Controller
        /**
      * Fetch call details from Vapi and update wallet & call record.
      */
-    private function handleWebhook(Request $request)
+    public function handleWebhook(Request $request)
     {
         Log::info("Vapi callback received: " . json_encode($request->all()));
         return response()->json(['status' => 'ok']);
