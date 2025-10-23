@@ -15,6 +15,7 @@ class CallRecord extends Model
                 'vapi_cost',
                 'total_cost',
                 'status',
+                'vapi_transcript',
                 'recording_url',
             ];
 }

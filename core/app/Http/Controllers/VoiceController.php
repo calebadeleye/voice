@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use AfricasTalking\SDK\AfricasTalking;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
+
 
 class VoiceController extends Controller
 {
@@ -78,7 +80,10 @@ class VoiceController extends Controller
      */
     protected function handleCallEnd(Request $request)
     {
-        $sessionId     = $request->input('sessionId');
+         // Generate internal session ID and store
+        $internalSessionId = uniqid('session_', true);
+        Cache::put("call_session", $internalSessionId, now()->addMinute());
+
         $callerNumber  = $request->input('callerNumber');
         $calledNumber  = $request->input('destinationNumber');
         $duration      = $request->input('durationInSeconds');
@@ -103,14 +108,11 @@ class VoiceController extends Controller
                 return;
             }
 
-            // === 4. Total combined cost in Naira ===
-            $totalCost = $atCost ;
-
             // === 5. Deduct cost from company's wallet ===
-            if ($totalCost > 0) {
-                $user->withdraw($totalCost, [
+            if ($atCost > 0) {
+                $user->withdraw($atCost, [
                     'description' => 'Voice call charge (AT + Vapi)',
-                    'session_id'  => $sessionId,
+                    'session_id'  => $internalSessionId,
                     'duration'    => $duration,
                     'caller'      => $callerNumber,
                 ]);
@@ -120,19 +122,14 @@ class VoiceController extends Controller
             CallRecord::create([
                 'user_id'    => $user->id,
                 'caller'     => $callerNumber,
-                'session_id' => $sessionId,
+                'session_id' => $internalSessionId,
                 'duration'   => $duration,
                 'at_cost'    => $atCost,
                 'vapi_cost'  => 0,
-                'total_cost' => $totalCost,
-                'status'     => 'completed',
+                'total_cost' => 0,
+                'status'     => 'active',
                 'recording_url'=> $request->input('recordingUrl'),
             ]);
-
-            $this->updateVapiCallDetails($user->id, $sessionId);
-
-
-            Log::info("Call ended: Duration {$duration}s | Total ₦{$totalCost} | Company {$company->name}");
 
         } catch (\Exception $e) {
             Log::error("Error handling call end: " . $e->getMessage());
@@ -144,8 +141,39 @@ class VoiceController extends Controller
      */
     public function handleWebhook(Request $request)
     {
-        Log::info("Vapi callback received: " . json_encode($request->all()));
-        return response()->json(['status' => 'ok']);
+        Log::info('Vapi Webhook Received', $request->all());
+
+        $data = $request->input('message');
+        $sessionId = Cache::get("call_session");
+
+        $cost = $data['cost'] ?? 0;
+        $transcript = $data['transcript'] ?? null;
+
+        $callRecord = CallRecord::where('session_id', $sessionId)->first();
+
+        // Deduct cost from wallet
+        if ($cost > 0) {
+             // Deduct from wallet
+            $user = User::where('id',$callRecord->user_id)->first();
+
+            $user->withdraw($cost);
+        }
+
+        $callRecord = CallRecord::where('session_id', $sessionId)->first();
+
+        if ($callRecord) {
+            $callRecord->update([
+                'vapi_cost'    => $cost,
+                'vapi_transcript'   => $transcript,
+                'total_cost' => $cost + $callRecord->at_cost,
+                'status'     => 'completed',
+            ]);
+
+            // Clean up memory
+            Cache::forget("call_session");
+        }
+
+        return response()->json(['message' => 'Webhook handled'], 200);
     }
 
 }
