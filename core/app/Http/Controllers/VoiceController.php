@@ -35,7 +35,7 @@ class VoiceController extends Controller
         Cache::put("call_session", $internalSessionId, now()->addMinute());
 
         // Log the incoming request for debugging
-        Log::info("Voice callback received", $request->all());
+        //Log::info("Voice callback received", $request->all());
 
         // Africa's Talking sends these parameters in POST
         $callerNumber      = $request->input('callerNumber'); // the caller
@@ -140,7 +140,7 @@ class VoiceController extends Controller
     public function handleWebhook(Request $request)
     {
         sleep(5);
-       // Log::info('Vapi Webhook Received', $request->all());
+       Log::info('Vapi Webhook Received', $request->all());
 
         $data = $request->input('message');
         $sessionId = Cache::get("call_session");
