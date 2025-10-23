@@ -38,12 +38,13 @@ class VoiceController extends Controller
         Log::info("Voice callback received", $request->all());
 
         // Africa's Talking sends these parameters in POST
-        $callerNumber     = $request->input('callerNumber'); // the caller
-        $isActive         = $request->input('isActive');     // call status
-        $company = Company::where('africastalking_number',$callerNumber)->first();
+        $callerNumber      = $request->input('callerNumber'); // the caller
+        $isActive          = $request->input('isActive');     // call status
+        $africaNumber = $request->input('destinationNumber');     // call status
+        $company = Company::where('africastalking_number',$africaNumber)->first();
 
         // The number you want the caller to be connected to
-        $destinationNumber = $company->vapi_number; // <-- change to your target number
+        $vapiNumber = $company->vapi_number; // <-- change to your target number
         $verifiedCallerId  = $company->africastalking_number; // <-- must be a number verified on AT
 
         // Make sure the call is active
@@ -56,7 +57,7 @@ class VoiceController extends Controller
 
             // Dial the destination number
             $xml .= '<Dial record="true" sequential="true" ';
-            $xml .= 'phoneNumbers="' . $destinationNumber . '" ';
+            $xml .= 'phoneNumbers="' . $vapiNumber . '" ';
             $xml .= 'callerId="' . $verifiedCallerId . '">';
             $xml .= '</Dial>';
 
