@@ -35,8 +35,9 @@ return [
         ],
     ],
 
-    'openai' => [
-        'key' => env('OPENAI_API_KEY'),
+    'vapi' => [
+        'key' => env('VAPI_API_KEY'),
+        'endpoint' => env('VAPI_API_ENDPOINT', 'https://api.vapi.ai'),
     ],
 
     'africastalking' => [

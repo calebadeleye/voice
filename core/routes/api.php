@@ -17,5 +17,5 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 Route::post('/voice/callback', [VoiceController::class, 'callback']);
-Route::post('/voice/respond', [VoiceController::class, 'respondToAi']);
-Route::post('/voice/event', [VoiceController::class, 'event']);
+Route::post('/vapi/callback', [VoiceController::class, 'handleWebhook']);
+

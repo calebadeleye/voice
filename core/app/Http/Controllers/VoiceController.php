@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
+use App\Models\Company;
+use App\Models\CallRecord;
 use Illuminate\Http\Request;
 use AfricasTalking\SDK\AfricasTalking;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
-use App\Models\User;
-use App\Models\Company;
 
 class VoiceController extends Controller
 {
@@ -60,95 +61,91 @@ class VoiceController extends Controller
                 ->header('Content-Type', 'application/xml');
         }
 
+         // === CALL ENDED ===
+          if ($isActive === 'false' || $isActive === '0' || $isActive === 0 || $isActive === false){
+            $this->handleCallEnd($request);
+            // Return 200 OK to AT immediately after handling call end
+            return response('Call ended processed successfully', 200);
+        }
+
         // Optional: handle inactive calls or errors
         Log::warning("Call not active or failed", $request->all());
-        return response('Call not active', 200);
+        return response('Unhandled call state', 200);
     }
 
-
-    /**
-     * Handle AI interaction once user input is available.
+     /**
+     * Handle call end: get AT cost, Vapi cost (USD), convert to Naira, update wallet.
      */
-    public function respondToAi(Request $request)
+    protected function handleCallEnd(Request $request)
     {
-        $destinationNumber = $request->input('destinationNumber');
-        $speechText = $request->input('speechText'); // Africa’s Talking will include speech result if you used <record> action
+        $sessionId     = $request->input('sessionId');
+        $callerNumber  = $request->input('callerNumber');
+        $calledNumber  = $request->input('destinationNumber');
+        $duration      = $request->input('durationInSeconds');
+        $atAmount      = $request->input('amount'); // e.g. "55.57850448"
 
-        $company = $this->identifyCompany($destinationNumber);
-
-        if (!$company) {
-            return $this->sayResponse("Sorry, I could not find your company profile.");
-        }
-
-        $user = $company->user;
-
-        // Wallet check before AI call
-        $cost = config('app.ai_message_cost', 10);
-        if ($user->balance < $cost) {
-            return $this->sayResponse("You have insufficient balance. Please top up your wallet.");
-        }
-
-        // Deduct charge
-        $user->withdraw($cost, ['reason' => 'AI Call Interaction']);
-
-        // Get AI reply (stubbed function)
-        $aiReply = $this->getAiResponse($company, $speechText);
-
-        return $this->sayResponse($aiReply);
-    }
-
-    /**
-     * Africa’s Talking event logs
-     */
-    public function event(Request $request)
-    {
-        Log::info("Voice event received", $request->all());
-        return response('OK', 200);
-    }
-
-    /**
-     * Helper to identify the company from caller’s number.
-     */
-    private function identifyCompany($destinationNumber)
-    {
-        return Company::where('africastalking_number', $destinationNumber)->first();
-    }
-
-    /**
-     * Stub AI function (replace with your GPT or internal AI logic)
-     */
-    private function getAiResponse(Company $company, string $query): string
-    {
-        // Example: call your AI API
         try {
-            $response = Http::post('https://api.openai.com/v1/chat/completions', [
-                'model' => 'gpt-4o-mini',
-                'messages' => [
-                    ['role' => 'system', 'content' => "You are the AI assistant for {$company->name}."],
-                    ['role' => 'user', 'content' => $query],
-                ],
-            ])->json();
+            // === 1. Clean up Africa's Talking cost ===
+            $atCost = floatval(preg_replace('/[^0-9.]/', '', $atAmount));
 
-            return $response['choices'][0]['message']['content'] ?? "Sorry, I couldn't process that.";
+            // === 2. Get company using AT number ===
+            $company = Company::where('africastalking_number', $calledNumber)->first();
+
+            if (!$company) {
+                Log::warning("No company found for AT number: $calledNumber");
+                return;
+            }
+
+            // === 3. Get the associated user (wallet holder)
+            $user = $company->user; // make sure Company has user() relationship
+            if (!$user) {
+                Log::error("No user found for company id={$company->id}");
+                return;
+            }
+
+            // === 4. Total combined cost in Naira ===
+            $totalCost = $atCost ;
+
+            // === 5. Deduct cost from company's wallet ===
+            if ($totalCost > 0) {
+                $user->withdraw($totalCost, [
+                    'description' => 'Voice call charge (AT + Vapi)',
+                    'session_id'  => $sessionId,
+                    'duration'    => $duration,
+                    'caller'      => $callerNumber,
+                ]);
+            }
+
+            // === 6. Log call record ===
+            CallRecord::create([
+                'user_id'    => $user->id,
+                'caller'     => $callerNumber,
+                'session_id' => $sessionId,
+                'duration'   => $duration,
+                'at_cost'    => $atCost,
+                'vapi_cost'  => 0,
+                'total_cost' => $totalCost,
+                'status'     => 'completed',
+                'recording_url'=> $request->input('recordingUrl'),
+            ]);
+
+            $this->updateVapiCallDetails($user->id, $sessionId);
+
+
+            Log::info("Call ended: Duration {$duration}s | Total ₦{$totalCost} | Company {$company->name}");
+
         } catch (\Exception $e) {
-            Log::error('AI request failed', ['error' => $e->getMessage()]);
-            return "There was an error processing your request.";
+            Log::error("Error handling call end: " . $e->getMessage());
         }
     }
 
-    /**
-     * Builds JSON response to speak text using Google Chirp 3 HD
+       /**
+     * Fetch call details from Vapi and update wallet & call record.
      */
-    private function sayResponse(string $text)
+    private function handleWebhook(Request $request)
     {
-        return response()->json([
-            'actions' => [
-                [
-                    'action' => 'say',
-                    'text' => $text,
-                    'voice' => 'en-US-Chirp3-HD-F'
-                ]
-            ]
-        ]);
+        Log::info("Vapi callback received: " . json_encode($request->all()));
+        return response()->json(['status' => 'ok']);
     }
+
 }
