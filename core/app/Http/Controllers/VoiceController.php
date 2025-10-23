@@ -6,10 +6,9 @@ use App\Models\User;
 use App\Models\Company;
 use App\Models\CallRecord;
 use Illuminate\Http\Request;
-use AfricasTalking\SDK\AfricasTalking;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
+use AfricasTalking\SDK\AfricasTalking;
 
 
 class VoiceController extends Controller
@@ -30,17 +29,22 @@ class VoiceController extends Controller
      */
     public function callback(Request $request)
     {
+
+        // Generate internal session ID and store
+        $internalSessionId = uniqid('session_', true);
+        Cache::put("call_session", $internalSessionId, now()->addMinute());
+
         // Log the incoming request for debugging
         Log::info("Voice callback received", $request->all());
 
         // Africa's Talking sends these parameters in POST
         $callerNumber     = $request->input('callerNumber'); // the caller
-        $sessionId        = $request->input('sessionId');    // session ID
         $isActive         = $request->input('isActive');     // call status
+        $company = Company::where('africastalking_number',$callerNumber)->first();
 
         // The number you want the caller to be connected to
-        $destinationNumber = '+12343079240'; // <-- change to your target number
-        $verifiedCallerId  = '+2342017001182'; // <-- must be a number verified on AT
+        $destinationNumber = $company->vapi_number; // <-- change to your target number
+        $verifiedCallerId  = $company->africastalking_number; // <-- must be a number verified on AT
 
         // Make sure the call is active
         if ($isActive === 'true' || $isActive == 1) {
@@ -80,14 +84,12 @@ class VoiceController extends Controller
      */
     protected function handleCallEnd(Request $request)
     {
-         // Generate internal session ID and store
-        $internalSessionId = uniqid('session_', true);
-        Cache::put("call_session", $internalSessionId, now()->addMinute());
 
         $callerNumber  = $request->input('callerNumber');
         $calledNumber  = $request->input('destinationNumber');
         $duration      = $request->input('durationInSeconds');
         $atAmount      = $request->input('amount'); // e.g. "55.57850448"
+        $sessionId = Cache::get("call_session");
 
         try {
             // === 1. Clean up Africa's Talking cost ===
@@ -110,19 +112,14 @@ class VoiceController extends Controller
 
             // === 5. Deduct cost from company's wallet ===
             if ($atCost > 0) {
-                $user->withdraw($atCost, [
-                    'description' => 'Voice call charge (AT + Vapi)',
-                    'session_id'  => $internalSessionId,
-                    'duration'    => $duration,
-                    'caller'      => $callerNumber,
-                ]);
+                $user->withdraw($atCost);
             }
 
             // === 6. Log call record ===
             CallRecord::create([
                 'user_id'    => $user->id,
                 'caller'     => $callerNumber,
-                'session_id' => $internalSessionId,
+                'session_id' => $sessionId,
                 'duration'   => $duration,
                 'at_cost'    => $atCost,
                 'vapi_cost'  => 0,
@@ -141,12 +138,13 @@ class VoiceController extends Controller
      */
     public function handleWebhook(Request $request)
     {
-        Log::info('Vapi Webhook Received', $request->all());
+        sleep(5);
+       // Log::info('Vapi Webhook Received', $request->all());
 
         $data = $request->input('message');
         $sessionId = Cache::get("call_session");
 
-        $cost = $data['cost'] ?? 0;
+        $cost = $data['cost'] * env('USD_TO_NGN_RATE');
         $transcript = $data['transcript'] ?? null;
 
         $callRecord = CallRecord::where('session_id', $sessionId)->first();
