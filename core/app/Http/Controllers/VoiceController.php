@@ -163,7 +163,6 @@ class VoiceController extends Controller
         if ($callRecord) {
             $callRecord->update([
                 'vapi_cost'    => $cost,
-                'vapi_transcript'   => $transcript,
                 'total_cost' => $cost + $callRecord->at_cost,
                 'status'     => 'completed',
             ]);
