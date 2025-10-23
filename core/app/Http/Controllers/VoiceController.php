@@ -140,13 +140,18 @@ class VoiceController extends Controller
     public function handleWebhook(Request $request)
     {
         sleep(5);
-       Log::info('Vapi Webhook Received', $request->all());
+       //Log::info('Vapi Webhook Received', $request->all());
 
         $data = $request->input('message');
+
+        if (($data['type'] ?? '') !== 'end-of-call-report') {
+        Log::info('Webhook ignored: not end-of-call-report', ['type' => $data['type'] ?? 'none']);
+        return response()->json(['message' => 'Ignored non-end-of-call webhook'], 200);
+        }
+        
         $sessionId = Cache::get("call_session");
 
         $cost = $data['cost'] * env('USD_TO_NGN_RATE');
-        $transcript = $data['transcript'] ?? null;
 
         $callRecord = CallRecord::where('session_id', $sessionId)->first();
 
