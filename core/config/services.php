@@ -36,8 +36,10 @@ return [
     ],
 
     'vapi' => [
-        'key' => env('VAPI_API_KEY'),
-        'endpoint' => env('VAPI_API_ENDPOINT', 'https://api.vapi.ai'),
+        'api_key' => env('VAPI_API_KEY'),
+        'credential_id' => env('VAPI_CREDENTIAL_ID'),
+        'assistant_id' => env('VAPI_ASSISTANT_ID'),
+        'secret' => env('VAPI_SECRET'),
     ],
 
     'africastalking' => [

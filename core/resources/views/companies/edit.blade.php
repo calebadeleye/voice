@@ -45,27 +45,6 @@
 
         <hr class="my-4">
 
-       
-        <div class="mb-3">
-            <label>AI Assistant Name</label>
-            <input type="text" name="ai_name" class="w-full border p-2 rounded" value="{{ $company->ai_name }}">
-        </div>
-
-        <div class="mb-3">
-            <label>Africa’s Talking Number</label>
-            <input type="text" name="africastalking_number" class="w-full border p-2 rounded" value="{{ $company->africastalking_number }}">
-        </div>
-
-        <div class="mb-3">
-            <label>Vapi's Number</label>
-            <input type="text" name="vapi_number" class="w-full border p-2 rounded" value="{{ $company->vapi_number }}">
-        </div>
-
-        <div class="mb-3">
-            <label>Assistant Description / Prompt</label>
-            <textarea name="assistant_description" class="w-full border p-2 rounded" rows="3">{{ $company->assistant_description }}</textarea>
-        </div>
-
         <div>
                 <label class="block text-gray-600 font-medium mb-2">Company Logo</label>
                 <div class="flex items-center space-x-4">

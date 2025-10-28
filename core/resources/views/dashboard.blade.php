@@ -39,7 +39,7 @@
                         </svg>
                     </div>
                     <p class="text-3xl font-bold">
-                        ₦{{ number_format($wallet->balance ?? 0, 2) }}
+                         ₦{{ number_format(optional($wallet)->balance ?? 0, 2) }}
                     </p>
                     <a href="{{ route('wallet.index') }}" 
                         class="mt-4 inline-block px-4 py-2 bg-white text-green-700 font-semibold rounded-lg hover:bg-green-100 transition">
@@ -56,9 +56,9 @@
                         </svg>
                     </div>
                     <p class="text-2xl font-bold">
-                        {{ $company->virtual_number ?? 'Not Assigned' }}
+                        {{ $company->africastalking_number ?? 'Not Assigned' }}
                     </p>
-                    <a href="#" class="mt-4 inline-block px-4 py-2 bg-white text-indigo-700 font-semibold rounded-lg hover:bg-indigo-100 transition">
+                    <a href="{{ route('company.virtual-numbers.edit') }}" class="mt-4 inline-block px-4 py-2 bg-white text-indigo-700 font-semibold rounded-lg hover:bg-indigo-100 transition">
                         Manage Number
                     </a>
                 </div>
@@ -73,9 +73,9 @@
                         </svg>
                     </div>
                     <p class="text-xl font-medium">
-                        {{ $aiProfile->ai_name ?? 'Not Set' }}
+                        {{ $company->ai_name ?? 'Not Set' }}
                     </p>
-                    <a href="#" 
+                    <a href="{{ route('company.ai-assistant.edit') }}" 
                         class="mt-4 inline-block px-4 py-2 bg-white text-blue-700 font-semibold rounded-lg hover:bg-blue-100 transition">
                         Customize AI
                     </a>

@@ -2,79 +2,83 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 
 class PaymentController extends Controller
 {
-    
-    // Fund wallet page
-    public function fundWallet()
-    {
-        return view('wallet.fund');
-    }
 
-    // Redirect to Flutterwave payment page
-    public function initialize(Request $request)
+    public function flutterwavePay(Request $request)
     {
         $request->validate([
             'amount' => 'required|numeric|min:100',
         ]);
 
         $user = Auth::user();
+        $tx_ref = 'FLW_' . Str::random(10);
 
-        $data = [
-            'payment_options' => 'card,banktransfer,ussd',
-            'amount' => $request->amount,
-            'email' => $user->email,
-            'tx_ref' => Flutterwave::generateReference(),
+        // Prepare payload for Flutterwave API
+        $payload = [
+            'tx_ref' => $tx_ref,
+            'amount' => $request->amount + 100,
             'currency' => 'NGN',
             'redirect_url' => route('flutterwave.callback'),
             'customer' => [
                 'email' => $user->email,
-                'name' => $user->name,
+                'name'  => $user->name,
             ],
-            'meta' => [
-                'user_id' => $user->id,
+            'customizations' => [
+                'title' => 'Fund Wallet',
+                'description' => 'Wallet funding on ' . config('app.name'),
             ],
         ];
 
-        $payment = Flutterwave::initializePayment($data);
+        // Send request to Flutterwave
+        $response = Http::withToken(env('FLW_SECRET_KEY'))
+            ->post(env('FLW_BASE_URL') . '/payments', $payload)
+            ->json();
 
-        if ($payment['status'] !== 'success') {
-            return redirect()->back()->with('error', 'Unable to initiate payment.');
+        if (isset($response['status']) && $response['status'] === 'success') {
+            // Redirect user to payment page
+            return redirect($response['data']['link']);
         }
 
-        return redirect($payment['data']['link']);
+        return back()->with('error', 'Unable to initialize payment. Please try again.');
     }
 
-    // Handle payment callback
-    public function callback()
+    public function flutterwaveCallback(Request $request)
     {
-        $status = request()->status;
+        $status = $request->status;
+        $transaction_id = $request->transaction_id;
 
-        if ($status === 'successful') {
-            $transactionID = Flutterwave::getTransactionIDFromCallback();
-            $data = Flutterwave::verifyTransaction($transactionID);
+        if ($status !== 'successful' || !$transaction_id) {
+            return redirect()->route('wallet.index')->with('error', 'Payment not completed.');
+        }
 
-            $amount = $data['data']['amount'];
-            $user_id = $data['data']['meta']['user_id'];
+        // Verify payment
+        $verifyResponse = Http::withToken(env('FLW_SECRET_KEY'))
+            ->get(env('FLW_BASE_URL') . "/transactions/{$transaction_id}/verify")
+            ->json();
 
-            $user = \App\Models\User::find($user_id);
+        if (isset($verifyResponse['status']) && $verifyResponse['status'] === 'success') {
+            $data = $verifyResponse['data'];
 
-            if ($user) {
-                $user->deposit($amount, ['tx_ref' => $data['data']['tx_ref']]);
-            }
+                // Credit user wallet
+                $user = Auth::user();
+                $wallet = $user->wallet;
+
+                $wallet->deposit($data['amount'], [
+                    'description' => 'Wallet funding via Flutterwave',
+                    'reference' => $data['tx_ref'],
+                ]);
 
             return redirect()->route('wallet.index')->with('success', 'Wallet funded successfully!');
         }
 
-        elseif ($status === 'cancelled') {
-            return redirect()->route('wallet.index')->with('info', 'Payment cancelled.');
-        }
-
-        else {
-            return redirect()->route('wallet.index')->with('error', 'Payment failed or invalid.');
-        }
+        return redirect()->route('wallet.index')->with('error', 'Payment verification failed.');
     }
+
+
 }

@@ -17,9 +17,11 @@ class Company extends Model
     'phone',
     'email',
     'ai_name',
+    'assistant_id',
     'africastalking_number',
     'vapi_number',
     'assistant_description',
+    'welcome_message',
 ];
 
     public function files()

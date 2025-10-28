@@ -7,6 +7,10 @@ use PhpOffice\PhpWord\IOFactory as WordReader;
 use App\Models\CompanyKnowledge;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\LocalNumberRequestMail;
+use App\Mail\LocalNumberRequestAdminMail;
 
 class CompanyController extends Controller
 {
@@ -59,10 +63,6 @@ class CompanyController extends Controller
             'website' => 'nullable|url',
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email',
-            'ai_name' => 'nullable|string|max:100',
-            'africastalking_number' => 'nullable|string|max:20',
-            'vapi_number' => 'nullable|string|max:255',
-            'assistant_description' => 'nullable|string',
             'logo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
 
         ]);
@@ -77,6 +77,174 @@ class CompanyController extends Controller
 
         return back()->with('success', 'Company information updated successfully!');
     }
+
+    public function editVirtualNumbers()
+    {
+        $company = auth()->user()->company;
+
+        return view('companies.virtual-numbers', compact('company'));
+    }
+
+
+
+    public function requestNumber(Request $request)
+    {
+        $user = auth()->user();
+        $company = $user->company;
+        $type = strtolower(trim($request->input('type'))); 
+
+        $prices = [
+            'local' => 6500,
+            'international' => 3000,
+        ];
+
+        if (!isset($prices[$type])) {
+            return back()->with('error', 'Invalid number type selected.');
+        }
+
+        $price = $prices[$type];
+        $vat = $price * 0.075; // 7.5% VAT
+        $total = $price + $vat;
+
+        // Check wallet balance
+        if ($user->balance < $total) {
+            return back()->with('error', 'Insufficient wallet balance. Please fund your wallet.');
+        }
+
+        try {
+            // Deduct using bavix/laravel-wallet
+            $user->withdraw($total, [
+                'description' => "Purchase of {$type} number (₦{$price}) + VAT (₦" . number_format($vat, 2) . ")",
+            ]);
+
+            if ($type === 'local') {
+
+                // Send email notifying that request is being processed
+
+                 Mail::send('emails.local_number_request', [
+                        'user_name' => $user->name,
+                        'email' => $user->email,
+                        'company_name' => $company->name,
+                        'type' => $type,
+                        'price' => $price,
+                        'vat' => $vat,
+                        'total' => $total,
+                    ], function ($message) use ($user) {
+                        $message->to($user->email)
+                                ->subject('Your Local Number Request is Being Processed');
+                    });
+
+
+                  Mail::send('emails.local_number_request_admin', [
+                    'user_name' => $user->name,
+                    'email' => $user->email,
+                    'company_name' => $company->name,
+                    'type' => $type,
+                    'price' => $price,
+                    'vat' => $vat,
+                    'total' => $total,
+                ], function ($message) {
+                    $message->to('request@naitalk.com')
+                            ->subject('New Local Number Request Submitted');
+                });
+
+                return back()->with('info', 'Your request for a local number is being processed. You will receive an update soon.');
+            }
+
+              // 🌍 INTERNATIONAL number — create in real time via Vapi
+                $vapiUrl = 'https://api.vapi.ai/phone-number/buy';
+                $vapiApiKey = config('services.vapi.api_key');
+                $credentialId = config('services.vapi.credential_id'); // from your Vapi dashboard
+                $assistantId =  $company->assistant_id;
+                $name = $company->name;
+                $serverUrl = route('vapi.callback');
+
+                $response = Http::withToken($vapiApiKey)->post($vapiUrl, [ 
+                    'areaCode' => '234',
+                    'name' => $name,
+                    'assistantId' => $assistantId,
+                    'serverUrl' =>  'https://voice.naitalk.com/api/vapi/callback',
+                ]);
+
+                $data = $response->json();
+                \Log::info($data);
+                $assignedNumber = $data['number'];
+
+                // Save to database
+                $company->update(['vapi_number' => $assignedNumber]);
+
+                // Notify user
+                Mail::send('emails.international_number_assigned', [
+                    'user_name' => $user->name,
+                    'number' => $assignedNumber,
+                ], function ($message) use ($user) {
+                    $message->to($user->email)
+                            ->subject('Your International Number Has Been Assigned');
+                });
+
+                return back()->with('success', "International number assigned successfully: {$assignedNumber}");
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Transaction failed: ' . $e->getMessage());
+        }
+    }
+
+
+
+    public function editAIAssistant()
+    {
+        $company = auth()->user()->company;
+
+        return view('companies.ai-assistant', compact('company'));
+    }
+
+
+    public function updateAIAssistant(Request $request)
+    {
+        $data = $request->validate([
+            'ai_name' => 'required|string|max:30',
+            'assistant_description' => 'required|string',
+            'welcome_message' => 'required|string|max:50',
+        ]);
+        $company = auth()->user()->company;
+
+      
+        try {
+            $vapiToken = config('services.vapi.api_key'); // put in config/services.php
+            $vapiUrl = 'https://api.vapi.ai/assistant';
+            $response = Http::withToken($vapiToken)
+                ->post($vapiUrl, [
+                    'name' => $data['ai_name']."-".$company->name,
+                    'voice' => [
+                        'provider' => '11labs',
+                        'voiceId' => 'EXAVITQu4vr4xnSDxMaL',
+                    ],
+                    'firstMessage' => $data['welcome_message'],
+                    'model' => [
+                        'provider' => 'openai',
+                        'model' => 'gpt-4o-mini',
+                        'messages' => [
+                            [
+                                'role' => 'system',
+                                'content' => $data['assistant_description']
+                            ]
+                        ]
+                    ],
+                ]);
+
+
+            $assistant = $response->json();
+            $data['assistant_id'] = $assistant['id'];
+
+            $company->update($data);
+
+            return back()->with('success', 'AI Assistant information saved successfully!');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Something went wrong: ' . $e->getMessage());
+        }
+    }
+
+
 
     public function uploadFile(Request $request)
     {
